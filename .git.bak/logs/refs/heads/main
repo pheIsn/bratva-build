@@ -1,0 +1,8 @@
+0000000000000000000000000000000000000000 ff34b97723624b6d67cee46cca44a243724fd44f unknown <Admin@DESKTOP-5CGRB57.(none)> 1794300711 +0500	clone: from https://github.com/zxcloli666/SoundCloud-Desktop
+ff34b97723624b6d67cee46cca44a243724fd44f 0fd4ebc1839bf55d8df2f3907722924177b5a2db bratva <bratva@local> 1794302444 +0500	commit: rebrand: SoundCloud Desktop -> Bratva (Братва)
+0fd4ebc1839bf55d8df2f3907722924177b5a2db 5c5bbad55f07341d54e0d8d4065683a6ccaa2856 bratva <bratva@local> 1794302629 +0500	commit: rebrand: themes catalog + tools stubs to Bratva
+5c5bbad55f07341d54e0d8d4065683a6ccaa2856 264d90075dd650bb5f651ef41a349f20c8cf17fc bratva <bratva@local> 1794306039 +0500	commit: feat(bratva): surgically remove author infra (chat/star/superlikes/call/premium); fix sync; adapt UI to monitor Hz
+264d90075dd650bb5f651ef41a349f20c8cf17fc f2dfeb0fc2afe57fe774e95c5dc2b46cd394319a bratva <bratva@local> 1794308087 +0500	commit: feat: mini-player expand closes popover; premium always-on; smooth scroll
+f2dfeb0fc2afe57fe774e95c5dc2b46cd394319a a5cd96da0b7d08ee01943ceeada0155a5fe94ec3 bratva <bratva@local> 1794308429 +0500	commit: feat: view transitions, new icon, desktop shortcut, installer copy
+a5cd96da0b7d08ee01943ceeada0155a5fe94ec3 7fa0b191469006301f046c67a1d76ae499eafc8c bratva <bratva@local> 1794309954 +0500	commit: ci: add GitHub Actions workflow for macOS + Windows builds
+7fa0b191469006301f046c67a1d76ae499eafc8c 7fa0b191469006301f046c67a1d76ae499eafc8c bratva <bratva@local> 1794310288 +0500	Branch: renamed refs/heads/main to refs/heads/main

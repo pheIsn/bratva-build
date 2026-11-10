@@ -1,0 +1,14 @@
+[Desktop Entry]
+Name=Братва
+Comment=SoundCloud music player
+Exec=bratva
+Icon=app.bratva.desktop
+Type=Application
+Categories=Audio;Music;Player;
+Keywords=soundcloud;music;player;bratva;
+Actions=safe-render;
+
+[Desktop Action safe-render]
+Name=Safe render mode
+Name[ru]=Безопасный режим отрисовки
+Exec=bratva --safe-render

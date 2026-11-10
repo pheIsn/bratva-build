@@ -1,0 +1,124 @@
+import { QueryClientProvider } from '@tanstack/react-query';
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { ErrorScreen } from './components/ui/ErrorScreen';
+import { changeAppLanguage } from './i18n';
+import { initAuthBridge } from './lib/auth-session';
+import { setupCacheMaintenance } from './lib/cache';
+import { initCloseAction } from './lib/close-action';
+import { setServerPorts } from './lib/constants';
+import {
+  describeError,
+  reportError,
+  trackedInvoke as invoke,
+  logError,
+  setupUiWatchdog,
+} from './lib/diagnostics';
+import { startDiag } from './lib/diag';
+import { initEdge } from './lib/edge';
+import { queryClient } from './lib/query-client';
+import { initReloadKeys } from './lib/reload';
+import { bootThemes } from './lib/themes/boot';
+import { initUiScale } from './lib/ui-scale';
+import './fonts';
+import './index.css';
+import './lib/scproxy';
+import { useSettingsStore } from './stores/settings';
+
+// rAF и таймеры идут на фактической частоте развёртки монитора (vsync):
+// на 120 Гц — 120 fps, на 60 Гц — 60. Никакого жёсткого капа.
+
+// Sync language from persisted settings → i18n after tauriStorage rehydration
+useSettingsStore.persist.onFinishHydration((state) => {
+  if (state.language) {
+    void changeAppLanguage(state.language);
+  }
+});
+
+if (import.meta.env.DEV) {
+  const script = document.createElement('script');
+  script.src = 'https://unpkg.com/react-scan/dist/auto.global.js';
+  script.crossOrigin = 'anonymous';
+  document.head.appendChild(script);
+}
+
+function scheduleAfterFirstPaint(task: () => void) {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      if ('requestIdleCallback' in window) {
+        window.requestIdleCallback(() => task(), { timeout: 1500 });
+      } else {
+        setTimeout(task, 1);
+      }
+    });
+  });
+}
+
+function startDeferredRuntime() {
+  scheduleAfterFirstPaint(() => {
+    setupUiWatchdog();
+    setupCacheMaintenance();
+    void import('./lib/tray');
+    void import('./lib/tray-menu').then((m) => m.initTrayMenu());
+    void import('./lib/audio');
+    void import('./lib/track-sound').then((m) => m.initTrackSound());
+    void import('./lib/effects').then((m) => m.initEffects());
+    void import('./lib/queue-autopilot');
+    void import('./lib/discord');
+    void import('./lib/hotkeys').then((m) => m.initGlobalHotkeys());
+    void import('./lib/scrobble/tracker');
+    void import('./lib/obs/bridge');
+    void import('./lib/perf-probe').then((m) => {
+      void m.probeSoftwareRendering();
+      m.probePerfMode();
+    });
+    void import('./lib/host-status').then((m) => m.initHostStatus());
+    void import('./lib/storage-location').then((m) => m.warnIfStorageUnavailable());
+  });
+}
+
+async function bootstrap() {
+  await useSettingsStore.persist.rehydrate();
+  await initUiScale();
+  initReloadKeys();
+
+  const settings = useSettingsStore.getState();
+  startDiag(settings.sendErrorReports);
+  await changeAppLanguage(settings.language);
+  initCloseAction();
+
+  const [staticPort, proxyPort] = await invoke<[number, number]>('get_server_ports');
+  setServerPorts(staticPort, proxyPort);
+  await bootThemes();
+
+  // Вердикт транспорта (прямой / relay / воркеры) — до первого запроса,
+  // иначе забаненный юзер платит таймаутом на логине.
+  await initEdge();
+
+  // Seed the Rust-owned session into the frontend mirror + subscribe to
+  // auth:changed before the first render so the shell/login gate is correct.
+  await initAuthBridge();
+
+  ReactDOM.createRoot(document.getElementById('root')!).render(
+    <React.StrictMode>
+      <QueryClientProvider client={queryClient}>
+        <ErrorBoundary fullscreen>
+          <App />
+        </ErrorBoundary>
+      </QueryClientProvider>
+    </React.StrictMode>,
+  );
+
+  void startDeferredRuntime();
+}
+
+bootstrap().catch((error) => {
+  const message = describeError(error);
+  logError(`[Boot] ${message}`);
+  reportError('unhandled', error, { context: { stage: 'bootstrap' } });
+  ReactDOM.createRoot(document.getElementById('root')!).render(
+    <ErrorScreen error={new Error(message)} fullscreen />,
+  );
+});

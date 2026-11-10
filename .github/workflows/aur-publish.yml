@@ -1,0 +1,106 @@
+name: Publish to AUR
+
+# Логика — в .github/scripts/aur-publish.sh (идемпотентна, гоняется локально).
+# Что тут держит публикацию живой:
+#   - расписание: упал запуск на релизе (реестр образов, AUR, сеть) — догонит само;
+#   - образ Arch из трёх реестров по очереди, без pacman -Syu и зеркал Arch;
+#   - ключи хоста AUR зашиты, без ssh-keyscan; сеть — с повторами.
+
+on:
+  release:
+    types: [published]
+  schedule:
+    - cron: "41 */3 * * *"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Тег релиза (например 8.8.0). Пусто = последний релиз."
+        required: false
+        default: ""
+      force:
+        description: "Публиковать, даже если в AUR уже эта версия (pkgrel+1)"
+        type: boolean
+        default: false
+      dry_run:
+        description: "Всё, кроме push в AUR"
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      tag:
+        description: "Тег опубликованного релиза"
+        required: true
+        type: string
+      force:
+        type: boolean
+        default: false
+      dry_run:
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# Релиз и расписание не пушат в AUR одновременно.
+concurrency:
+  group: aur-publish
+  cancel-in-progress: false
+
+jobs:
+  publish-to-aur:
+    if: github.repository == 'zxcloli666/SoundCloud-Desktop'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github/scripts/aur-publish.sh
+          sparse-checkout-cone-mode: false
+
+      - name: Setup SSH for AUR
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$AUR_SSH_PRIVATE_KEY" ]; then
+            echo "::error::нет секрета AUR_SSH_PRIVATE_KEY"
+            exit 1
+          fi
+          install -d -m 700 "$HOME/.ssh"
+          # Приватный ключ — через env, чтобы не сломать переводы строк/спецсимволы.
+          printf '%s\n' "$AUR_SSH_PRIVATE_KEY" > "$HOME/.ssh/aur"
+          chmod 600 "$HOME/.ssh/aur"
+
+          # Ключи хоста зашиты: ssh-keyscan в CI мог отвалиться или подсунуть чужой ключ.
+          # Отпечатки сверены с опубликованными на https://aur.archlinux.org:
+          #   ED25519 SHA256:RFzBCUItH9LZS0cKB5UE6ceAYhBD5C8GeOBip8Z11+4
+          #   ECDSA   SHA256:uTa/0PndEgPZTf76e1DFqXKJEXKsn7m9ivhLQtzGOCI
+          #   RSA     SHA256:5s5cIyReIfNNVGRFdDbe3hdYiI5OelHGpw2rOUud3Q8
+          cat > "$HOME/.ssh/known_hosts_aur" <<'EOF'
+          aur.archlinux.org ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEuBKrPzbawxA/k2g6NcyV5jmqwJ2s+zpgZGZ7tpLIcN
+          aur.archlinux.org ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBLMiLrP8pVi5BFX2i3vepSUnpedeiewE5XptnUnau+ZoeUOPkpoCgZZuYfpaIQfhhJJI5qgnjJmr4hyJbe/zxow=
+          aur.archlinux.org ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDKF9vAFWdgm9Bi8uc+tYRBmXASBb5cB5iZsB7LOWWFeBrLp3r14w0/9S2vozjgqY5sJLDPONWoTTaVTbhe3vwO8CBKZTEt1AcWxuXNlRnk9FliR1/eNB9uz/7y1R0+c1Md+P98AJJSJWKN12nqIDIhjl2S1vOUvm7FNY43fU2knIhEbHybhwWeg+0wxpKwcAd/JeL5i92Uv03MYftOToUijd1pqyVFdJvQFhqD4v3M157jxS5FTOBrccAEjT+zYmFyD8WvKUa9vUclRddNllmBJdy4NyLB8SvVZULUPrP3QOlmzemeKracTlVOUG1wsDbxknF1BwSCU7CmU6UFP90kpWIyz66bP0bl67QAvlIc52Yix7pKJPbw85+zykvnfl2mdROsaT8p8R9nwCdFsBc9IiD0NhPEHcyHRwB8fokXTajk2QnGhL+zP5KnkmXnyQYOCUYo3EKMXIlVOVbPDgRYYT/XqvBuzq5S9rrU70KoI/S5lDnFfx/+lPLdtcnnEPk=
+          EOF
+
+          cat >> "$HOME/.ssh/config" <<EOF
+          Host aur.archlinux.org
+            User aur
+            IdentityFile $HOME/.ssh/aur
+            IdentitiesOnly yes
+            UserKnownHostsFile $HOME/.ssh/known_hosts_aur
+            StrictHostKeyChecking yes
+          EOF
+          chmod 600 "$HOME/.ssh/config"
+
+      # dry_run проверяет и SSH (ключ + known_hosts), ничего не пуша.
+      - name: Check AUR SSH access
+        if: ${{ inputs.dry_run }}
+        run: ssh -o BatchMode=yes aur@aur.archlinux.org help
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag || github.event.release.tag_name }}
+          MODE: ${{ inputs.force && 'force' || 'auto' }}
+          DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
+        run: bash .github/scripts/aur-publish.sh
