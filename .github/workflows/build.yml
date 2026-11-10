@@ -18,6 +18,8 @@ jobs:
           node-version: 20
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+      - name: Install build tools
+        run: brew install autoconf automake libtool
       - name: Install deps
         working-directory: desktop
         run: pnpm install
