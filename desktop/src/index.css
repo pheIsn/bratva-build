@@ -1801,8 +1801,9 @@ select,
   }
 }
 
+html, body, main, [data-ui="main"] { scroll-behavior: auto; }
+[data-ui="main"] { -webkit-overflow-scrolling: touch; contain: layout paint style; transform: translateZ(0); }
 /* smooth scrolling */
-html, body, main, [data-ui="main"] { scroll-behavior: smooth; }
 
 
 /* View Transitions */
